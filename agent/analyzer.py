@@ -1,32 +1,94 @@
-import json
+import re
+import os
 
-from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage
+from openai import OpenAI
+from dotenv import load_dotenv
 
-from agent.prompts import ANALYSIS_PROMPT
+from agent.prompts import SYSTEM_PROMPT
+from agent.tools import execute_python
+
+load_dotenv()
 
 
-class DataAnalyzer:
+class DataAgent:
 
     def __init__(self):
 
-        self.llm = ChatOpenAI(
-            model="gpt-4.1",
-            temperature=0
+        self.client = OpenAI(
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=os.getenv("NVIDIA_API_KEY")
         )
 
-    def analyze(self, report):
+    def ask_llm(self, messages):
 
-        prompt = f"""
-{ANALYSIS_PROMPT}
+        response = self.client.chat.completions.create(
+            model="deepseek-ai/deepseek-v4-pro",
+            messages=messages,
+            temperature=0.2,
+            max_tokens=4096,
+            extra_body={
+                "chat_template_kwargs": {
+                    "thinking": False
+                }
+            }
+        )
 
-Статистика датасета:
+        return response.choices[0].message.content
 
-{json.dumps(report, ensure_ascii=False, indent=2)}
+    def extract_code(self, text):
+
+        match = re.search(
+    r"<python>(.*?)</python>",
+    text,
+    re.DOTALL
+)
+
+        if match:
+            return match.group(1).strip()
+
+        return None
+
+    def analyze(self, df):
+
+        messages = [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": """
+Начни исследование датасета.
+Выполняй код по необходимости.
 """
+            }
+        ]
 
-        response = self.llm.invoke(
-            [HumanMessage(content=prompt)]
-        )
+        max_steps = 8
 
-        return response.content
+        for _ in range(max_steps):
+
+            answer = self.ask_llm(messages)
+
+            if "FINAL REPORT:" in answer:
+                return answer
+
+            code = self.extract_code(answer)
+
+            if not code:
+                return answer
+
+            result = execute_python(code, df)
+
+            messages.append({
+                "role": "assistant",
+                "content": answer
+            })
+
+            messages.append({
+                "role": "user",
+                "content":
+                    f"Результат выполнения:\n{result}"
+            })
+
+        return "Лимит шагов анализа достигнут."
