@@ -1,72 +1,89 @@
-import pandas as pd
-import streamlit as st
-import plotly.express as px
+import os
 
-from agent import analyze_dataframe
+import streamlit as st
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from dotenv import load_dotenv
+
+from agent.tools import (
+    load_dataset,
+    basic_eda
+)
+
+from agent.analyzer import (
+    DataAnalyzer
+)
+
+load_dotenv()
 
 st.set_page_config(
-    page_title="AI Data Analytics",
+    page_title="AI Data Analyst",
     layout="wide"
 )
 
-st.title("📊 AI Data Analytics Dashboard")
+st.title("AI Data Analyst")
+
+st.write(
+    "Загрузите CSV или Excel файл для анализа."
+)
 
 uploaded_file = st.file_uploader(
-    "Загрузите CSV",
-    type=["csv"]
+    "Выберите файл",
+    type=["csv", "xlsx"]
 )
 
 if uploaded_file:
 
-    try:
-        df = pd.read_csv(uploaded_file)
+    save_path = uploaded_file.name
 
-        st.subheader("Предпросмотр данных")
-        st.dataframe(df.head())
+    with open(save_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
 
-        col1, col2 = st.columns(2)
+    df = load_dataset(save_path)
 
-        with col1:
-            st.metric("Строк", df.shape[0])
+    st.success("Файл успешно загружен")
 
-        with col2:
-            st.metric("Столбцов", df.shape[1])
+    st.subheader("Первые строки")
 
-        st.subheader("Описание данных")
-        st.dataframe(df.describe(include="all"))
+    st.dataframe(df.head())
 
-        numeric_cols = df.select_dtypes(include="number").columns
+    if st.button("Запустить анализ"):
 
-        if len(numeric_cols) > 0:
+        with st.spinner("Выполняется анализ..."):
 
-            st.subheader("Визуализация")
+            report = basic_eda(df)
 
-            selected_col = st.selectbox(
-                "Выберите числовой столбец",
-                numeric_cols
+            analyzer = DataAnalyzer()
+
+            result = analyzer.analyze(report)
+
+        st.subheader("Результат анализа")
+
+        st.markdown(result)
+
+        numeric_cols = df.select_dtypes(
+            include="number"
+        ).columns
+
+        if len(numeric_cols) > 1:
+
+            st.subheader(
+                "Корреляционная матрица"
             )
 
-            fig = px.histogram(
-                df,
-                x=selected_col,
-                title=f"Распределение: {selected_col}"
+            fig, ax = plt.subplots(
+                figsize=(10, 6)
             )
 
-            st.plotly_chart(fig, use_container_width=True)
+            sns.heatmap(
+                df[numeric_cols]
+                .corr(),
+                annot=True,
+                cmap="coolwarm",
+                ax=ax
+            )
 
-        st.divider()
+            st.pyplot(fig)
 
-        st.subheader("🤖 AI-анализ датасета")
-
-        if st.button("Запустить AI-анализ"):
-
-            with st.spinner("Анализируем данные..."):
-
-                report = analyze_dataframe(df)
-
-            st.success("Анализ завершён")
-
-            st.markdown(report)
-
-    except Exception as e:
-        st.error(f"Ошибка: {e}")
+        os.remove(save_path)
