@@ -1,15 +1,39 @@
-from langchain_experimental.agents import create_pandas_dataframe_agent
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 
-llm = ChatOpenAI(
-    model="deepseek/deepseek-chat-v3-0324:free",
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY")
-),
-    df,
-    verbose=True,
-    allow_dangerous_code=True
+llm = ChatOllama(
+    model="qwen2.5:3b",
+    temperature=0
 )
-result = agent.invoke(
-    "Проведи полный анализ датасета и найди инсайты"
-)
+
+def analyze_dataframe(df):
+
+    info = f"""
+Размер датасета: {df.shape}
+
+Столбцы:
+{list(df.columns)}
+
+Первые строки:
+{df.head(10).to_string()}
+
+Описание:
+{df.describe(include='all').to_string()}
+"""
+
+    prompt = f"""
+Проведи анализ датасета.
+
+{info}
+
+Укажи:
+
+1. Общую характеристику данных.
+2. Основные закономерности.
+3. Возможные аномалии.
+4. Интересные инсайты.
+5. Практические выводы.
+"""
+
+    response = llm.invoke(prompt)
+
+    return response.content
