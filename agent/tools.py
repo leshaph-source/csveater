@@ -1,61 +1,37 @@
+import io
 import pandas as pd
-import numpy as np
+import contextlib
 
 
 def load_dataset(filepath):
-    """
-    Загрузка CSV или Excel.
-    """
 
     if filepath.endswith(".csv"):
-        df = pd.read_csv(filepath)
-    else:
-        df = pd.read_excel(filepath)
+        return pd.read_csv(filepath)
 
-    return df
+    return pd.read_excel(filepath)
 
 
-def basic_eda(df):
-    """
-    Сбор статистики по датасету.
-    """
+def execute_python(code: str, df):
 
-    report = {}
-
-    report["rows"] = len(df)
-    report["columns"] = len(df.columns)
-
-    report["column_names"] = list(df.columns)
-
-    report["dtypes"] = {
-        col: str(dtype)
-        for col, dtype in df.dtypes.items()
+    local_vars = {
+        "df": df,
+        "pd": pd
     }
 
-    report["missing_values"] = (
-        df.isnull()
-        .sum()
-        .to_dict()
-    )
+    buffer = io.StringIO()
 
-    report["duplicates"] = int(df.duplicated().sum())
+    try:
 
-    numeric_df = df.select_dtypes(
-        include=np.number
-    )
+        with contextlib.redirect_stdout(buffer):
 
-    if not numeric_df.empty:
-        report["describe"] = (
-            numeric_df.describe()
-            .to_dict()
-        )
+            exec(code, {}, local_vars)
 
-        report["correlation"] = (
-            numeric_df.corr(
-                numeric_only=True
-            )
-            .round(3)
-            .to_dict()
-        )
+        output = buffer.getvalue()
 
-    return report
+        if not output:
+            output = "Code executed successfully."
+
+        return output
+
+    except Exception as e:
+        return f"ERROR: {str(e)}"
